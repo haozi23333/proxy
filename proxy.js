@@ -2,11 +2,11 @@
  * Module dependencies.
  */
 
-var net = require('net');
-var url = require('url');
-var http = require('http');
-var assert = require('assert');
-var debug = require('debug')('proxy');
+let net = require('net');
+let url = require('url');
+let http = require('http');
+let assert = require('assert');
+let debug = require('debug')('proxy');
 
 // log levels
 debug.request = require('debug')('proxy ← ← ←');
@@ -15,14 +15,16 @@ debug.proxyRequest = require('debug')('proxy ↑ ↑ ↑');
 debug.proxyResponse = require('debug')('proxy ↓ ↓ ↓');
 
 // hostname
-var hostname = require('os').hostname();
+let hostname = require('os').hostname();
 
 // proxy server version
-var version = require('./package.json').version;
+let version = require('./package.json').version;
 
 /**
  * Module exports.
  */
+
+const domain_regex = new RegExp(/^(https?)\.(\d+?)\.(((2(5[0-5]|[0-4]\d))|[0-1]?\d{1,2})(\.((2(5[0-5]|[0-4]\d))|[0-1]?\d{1,2})){3})/)
 
 module.exports = setup;
 
@@ -51,7 +53,7 @@ function setup(server, options) {
  * Connection header, (section 14.10) to be introduced into HTTP/1.1 (or later).
  */
 
-var hopByHopHeaders = [
+let hopByHopHeaders = [
 	'Connection',
 	'Keep-Alive',
 	'Proxy-Authenticate',
@@ -63,7 +65,7 @@ var hopByHopHeaders = [
 ];
 
 // create a case-insensitive RegExp to match "hop by hop" headers
-var isHopByHop = new RegExp('^(' + hopByHopHeaders.join('|') + ')$', 'i');
+let isHopByHop = new RegExp(`^(${  hopByHopHeaders.join('|')  })$`, 'i');
 
 /**
  * Iterator function for the request/response's "headers".
@@ -76,7 +78,7 @@ function eachHeader(obj, fn) {
 	if (Array.isArray(obj.rawHeaders)) {
 		// ideal scenario... >= node v0.11.x
 		// every even entry is a "key", every odd entry is a "value"
-		var key = null;
+		let key = null;
 		obj.rawHeaders.forEach(function(v) {
 			if (key === null) {
 				key = v;
@@ -87,10 +89,10 @@ function eachHeader(obj, fn) {
 		});
 	} else {
 		// otherwise we can *only* proxy the header names as lowercase'd
-		var headers = obj.headers;
+		let headers = obj.headers;
 		if (!headers) return;
 		Object.keys(headers).forEach(function(key) {
-			var value = headers[key];
+			let value = headers[key];
 			if (Array.isArray(value)) {
 				// set-cookie
 				value.forEach(function(val) {
@@ -109,8 +111,8 @@ function eachHeader(obj, fn) {
 
 function onrequest(req, res) {
 	debug.request('%s %s HTTP/%s ', req.method, req.url, req.httpVersion);
-	var server = this;
-	var socket = req.socket;
+	let server = this;
+	let socket = req.socket;
 
 	// pause the socket during authentication so no data is lost
 	socket.pause();
@@ -120,31 +122,46 @@ function onrequest(req, res) {
 		if (err) {
 			// an error occured during login!
 			res.writeHead(500);
-			res.end((err.stack || err.message || err) + '\n');
+			res.end(`${err.stack || err.message || err  }\n`);
 			return;
 		}
 		if (!auth) return requestAuthorization(req, res);
-		var parsed = url.parse(req.url);
 
+		let parsed
+
+
+		if (domain_regex.test(req.headers.host)) {
+			const regex_res = req.headers.host.match(domain_regex)
+			const [,protocol, port, ip] = regex_res
+			console.log({
+				port,
+				ip,
+				protocol,
+				url: `${protocol}://${ip}:${port}${req.url}`
+			})
+			parsed = url.parse(`${protocol}://${ip}:${port}${req.url}`);
+		} else {
+			parsed = url.parse(req.url);
+		}
 		// proxy the request HTTP method
 		parsed.method = req.method;
 
 		// setup outbound proxy request HTTP headers
-		var headers = {};
-		var hasXForwardedFor = false;
-		var hasVia = false;
-		var via = '1.1 ' + hostname + ' (proxy/' + version + ')';
+		let headers = {};
+		let hasXForwardedFor = false;
+		let hasVia = false;
+		let via = `1.1 ${  hostname  } (proxy/${  version  })`;
 
 		parsed.headers = headers;
 		eachHeader(req, function(key, value) {
 			debug.request('Request Header: "%s: %s"', key, value);
-			var keyLower = key.toLowerCase();
+			let keyLower = key.toLowerCase();
 
-			if (!hasXForwardedFor && 'x-forwarded-for' === keyLower) {
+			if (!hasXForwardedFor && keyLower === 'x-forwarded-for') {
 				// append to existing "X-Forwarded-For" header
 				// http://en.wikipedia.org/wiki/X-Forwarded-For
 				hasXForwardedFor = true;
-				value += ', ' + socket.remoteAddress;
+				value += `, ${  socket.remoteAddress}`;
 				debug.proxyRequest(
 					'appending to existing "%s" header: "%s"',
 					key,
@@ -152,10 +169,10 @@ function onrequest(req, res) {
 				);
 			}
 
-			if (!hasVia && 'via' === keyLower) {
+			if (!hasVia && keyLower === 'via') {
 				// append to existing "Via" header
 				hasVia = true;
-				value += ', ' + via;
+				value += `, ${  via}`;
 				debug.proxyRequest(
 					'appending to existing "%s" header: "%s"',
 					key,
@@ -166,10 +183,10 @@ function onrequest(req, res) {
 			if (isHopByHop.test(key)) {
 				debug.proxyRequest('ignoring hop-by-hop header "%s"', key);
 			} else {
-				var v = headers[key];
+				let v = headers[key];
 				if (Array.isArray(v)) {
 					v.push(value);
-				} else if (null != v) {
+				} else if (v != null) {
 					headers[key] = [v, value];
 				} else {
 					headers[key] = value;
@@ -194,8 +211,8 @@ function onrequest(req, res) {
 		}
 
 		// custom `http.Agent` support, set `server.agent`
-		var agent = server.agent;
-		if (null != agent) {
+		let agent = server.agent;
+		if (agent != null) {
 			debug.proxyRequest(
 				'setting custom `http.Agent` option for proxy request: %s',
 				agent
@@ -204,13 +221,13 @@ function onrequest(req, res) {
 			agent = null;
 		}
 
-		if (null == parsed.port) {
+		if (parsed.port == null) {
 			// default the port number if not specified, for >= node v0.11.6...
 			// https://github.com/joyent/node/issues/6199
 			parsed.port = 80;
 		}
 
-		if ('http:' != parsed.protocol) {
+		if (parsed.protocol !== 'http:') {
 			// only "http://" is supported, "https://" should use CONNECT method
 			res.writeHead(400);
 			res.end('Only "http:" protocol prefix is supported\n');
@@ -221,15 +238,15 @@ function onrequest(req, res) {
 			parsed.localAddress = server.localAddress;
 		}
 
-		var gotResponse = false;
-		var proxyReq = http.request(parsed);
+		let gotResponse = false;
+		let proxyReq = http.request(parsed);
 		debug.proxyRequest('%s %s HTTP/1.1 ', proxyReq.method, proxyReq.path);
 
 		proxyReq.on('response', function(proxyRes) {
 			debug.proxyResponse('HTTP/1.1 %s', proxyRes.statusCode);
 			gotResponse = true;
 
-			var headers = {};
+			let headers = {};
 			eachHeader(proxyRes, function(key, value) {
 				debug.proxyResponse(
 					'Proxy Response Header: "%s: %s"',
@@ -239,10 +256,10 @@ function onrequest(req, res) {
 				if (isHopByHop.test(key)) {
 					debug.response('ignoring hop-by-hop header "%s"', key);
 				} else {
-					var v = headers[key];
+					let v = headers[key];
 					if (Array.isArray(v)) {
 						v.push(value);
-					} else if (null != v) {
+					} else if (v != null) {
 						headers[key] = [v, value];
 					} else {
 						headers[key] = value;
@@ -266,7 +283,7 @@ function onrequest(req, res) {
 					'already sent a response, just destroying the socket...'
 				);
 				socket.destroy();
-			} else if ('ENOTFOUND' == err.code) {
+			} else if (err.code === 'ENOTFOUND') {
 				debug.response('HTTP/1.1 404 Not Found');
 				res.writeHead(404);
 				res.end();
@@ -311,13 +328,13 @@ function onrequest(req, res) {
 function onconnect(req, socket, head) {
 	debug.request('%s %s HTTP/%s ', req.method, req.url, req.httpVersion);
 	assert(
-		!head || 0 == head.length,
+		!head || head.length === 0,
 		'"head" should be empty for proxy requests'
 	);
 
-	var res;
-	var target;
-	var gotResponse = false;
+	let res;
+	let target;
+	let gotResponse = false;
 
 	// define request socket event listeners
 	socket.on('close', function onclientclose() {
@@ -357,7 +374,7 @@ function onconnect(req, socket, head) {
 				'already sent a response, just destroying the socket...'
 			);
 			socket.destroy();
-		} else if ('ENOTFOUND' == err.code) {
+		} else if (err.code === 'ENOTFOUND') {
 			debug.response('HTTP/1.1 404 Not Found');
 			res.writeHead(404);
 			res.end();
@@ -417,15 +434,15 @@ function onconnect(req, socket, head) {
 		if (err) {
 			// an error occured during login!
 			res.writeHead(500);
-			res.end((err.stack || err.message || err) + '\n');
+			res.end(`${err.stack || err.message || err  }\n`);
 			return;
 		}
 		if (!auth) return requestAuthorization(req, res);
 
-		var parts = req.url.split(':');
-		var host = parts[0];
-		var port = +parts[1];
-		var opts = { host: host, port: port };
+		let parts = req.url.split(':');
+		let host = parts[0];
+		let port = +parts[1];
+		let opts = { host, port };
 
 		debug.proxyRequest('connecting to proxy target %j', opts);
 		target = net.connect(opts);
@@ -447,7 +464,7 @@ function onconnect(req, socket, head) {
  */
 
 function authenticate(server, req, fn) {
-	var hasAuthenticate = 'function' == typeof server.authenticate;
+	let hasAuthenticate = typeof server.authenticate === 'function';
 	if (hasAuthenticate) {
 		debug.request('authenticating request "%s %s"', req.method, req.url);
 		server.authenticate(req, fn);
@@ -472,10 +489,10 @@ function requestAuthorization(req, res) {
 	);
 
 	// TODO: make "realm" and "type" (Basic) be configurable...
-	var realm = 'proxy';
+	let realm = 'proxy';
 
-	var headers = {
-		'Proxy-Authenticate': 'Basic realm="' + realm + '"'
+	let headers = {
+		'Proxy-Authenticate': `Basic realm="${  realm  }"`
 	};
 	res.writeHead(407, headers);
 	res.end();
